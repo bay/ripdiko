@@ -8,6 +8,7 @@ require 'open-uri'
 require 'nokogiri'
 require 'date'
 require 'fileutils'
+require 'yaml'
 
 module Notifier
   SCRIPTS = ENV['RIPDIKO_SCRIPTS'] || "#{ENV['HOME']}/.ripdiko/scripts"
@@ -45,9 +46,10 @@ class DownloadTask
   include Notifier
 
   PLAYER_URL = "http://radiko.jp/player/swf/player_4.1.0.00.swf"
+  LOGIN_URL = "https://radiko.jp/ap/member/login/login"
   TMPDIR = ENV['TMPDIR'] || '/tmp'
 
-  attr_accessor :station, :cache, :buffer, :outdir, :bitrate
+  attr_accessor :station, :cache, :buffer, :outdir, :bitrate, :config
 
   def initialize(station = nil, duration = 1800, *args)
     unless station
@@ -59,6 +61,11 @@ class DownloadTask
     @buffer = ENV['RIPDIKO_BUFFER'] || 60
     @outdir = ENV['RIPDIKO_OUTDIR'] || "#{ENV['HOME']}/Music/Radiko"
     @bitrate = ENV['RIPDIKO_BITRATE'] || '64k'
+    if File.exists? ('config.yaml')
+      @config = YAML.load_file('config.yaml')
+    else
+      @config = {}
+    end
   end
 
   def authenticate
@@ -69,6 +76,10 @@ class DownloadTask
 
     unless cache['authkey.png'].exist?
       abort "failed to extract authkey out of player.swf"
+    end
+
+    if config.key?('radiko')
+      login(LOGIN_URL, cache['radiko_cookie'], config['radiko']['mail'], config['radiko']['pass'])
     end
 
     res = fetch_auth "https://radiko.jp/v2/api/auth1_fms",
@@ -95,10 +106,10 @@ class DownloadTask
       'X-Radiko-Authtoken' => token,
       'X-Radiko-Partialkey' => partial_key
 
-    if /^(.*),/ === res.body
+    if res.body
       token
     else
-      abort "auth2 failed. Outside Japan?"
+      abort "auth2 failed."
     end
   end
 
@@ -189,13 +200,17 @@ class DownloadTask
 
   def fetch_auth(url, headers)
     hdrs = headers.map {|k,v| "--header=\"#{k}: #{v}\"" }.join(" ")
-    AuthResponse.new(`wget -q #{hdrs} --post-data='\\r\\n' --no-check-certificate --save-headers -O - #{url}`)
+    AuthResponse.new(`wget -q #{hdrs} --post-data='\\r\\n' --no-check-certificate --load-cookies #{cache['radiko_cookie']} --save-headers -O - #{url}`)
   end
 
   def download(url, path)
     unless path.exist?
       system *(%W(wget -q -O #{path} #{url}))
     end
+  end
+
+  def login(url, cookie, mail, pass)
+    `wget -q --save-cookie=#{cookie} --keep-session-cookies --post-data='mail=#{mail}&pass=#{pass}' -O - #{url}`
   end
 
   def abort(msg)
