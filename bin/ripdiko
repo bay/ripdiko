@@ -44,7 +44,7 @@ end
 class DownloadTask
   include Notifier
 
-  PLAYER_URL = "http://radiko.jp/player/swf/player_3.0.0.01.swf"
+  PLAYER_URL = "http://radiko.jp/player/swf/player_4.1.0.00.swf"
   TMPDIR = ENV['TMPDIR'] || '/tmp'
 
   attr_accessor :station, :cache, :buffer, :outdir, :bitrate
